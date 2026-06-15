@@ -1,0 +1,179 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import { createServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
+
+import { env } from './config/env.js';
+import { pool, checkDatabaseHealth } from './config/database.js';
+import { requestLogger } from './middleware/requestLogger.js';
+import { rateLimiter } from './middleware/rateLimiter.js';
+import { errorHandler } from './middleware/errorHandler.js';
+import { initializeChatGateway } from './modules/chat/chat.gateway.js';
+import { logger } from './common/logger.js';
+
+// Import routes
+import authRoutes from './modules/auth/auth.routes.js';
+import tasksRoutes from './modules/tasks/tasks.routes.js';
+import donationsRoutes from './modules/donations/donations.routes.js';
+import chatRoutes from './modules/chat/chat.routes.js';
+import campaignsRoutes from './modules/campaigns/campaigns.routes.js';
+import deliveriesRoutes from './modules/deliveries/deliveries.routes.js';
+import withdrawalsRoutes from './modules/withdrawals/withdrawals.routes.js';
+import adminRoutes from './modules/admin/admin.routes.js';
+import usersRoutes from './modules/users/users.routes.js';
+import ngoRoutes from './modules/ngo/ngo.routes.js';
+import coordinatorRoutes from './modules/coordinator/coordinator.routes.js';
+import mediaRoutes from './modules/media/media.routes.js';
+import inKindRoutes from './modules/inkind/inkind.routes.js';
+import goodsCampaignsRoutes from './modules/goodsCampaigns/goodsCampaigns.routes.js';
+import goodsDonationsRoutes from './modules/goodsDonations/goodsDonations.routes.js';
+import goodsDonationsAdminRoutes from './modules/goodsDonations/goodsDonations.admin.routes.js';
+import { CorsOptions } from 'cors';
+// CorsRequest
+// import { Request } from 'express';
+
+// ── Express App Setup ───────────────────────────────────────
+const app = express();
+const httpServer = createServer(app);
+
+app.set('trust proxy', 1);
+
+// ── Observability Middleware ────────────────────────────────
+app.use(requestLogger);
+
+// ── Security Middleware ─────────────────────────────────────
+app.use(helmet());
+
+// CORS whitelist — only allow specified origins
+// const allowedOrigins = env.CORS_ORIGINS.split(',').map((o) => o.trim());
+// logger.info(`[INIT] CORS Allowed Origins: ${allowedOrigins.join(', ')}`);
+
+// const corsOptions = {
+//   origin: env.NODE_ENV === 'development'
+//     ? true  // allow all in dev (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+//     // Allow requests with no origin (mobile apps, curl, etc.)
+//     : (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+//     if (!origin) {
+//       return callback(null, true);
+//     }
+//     if (allowedOrigins.includes(origin)) {
+//       return callback(null, true);
+//     }
+//     console.warn(`[CORS] Rejected origin: ${origin}`);
+//     callback(new Error(`CORS: Origin ${origin} not allowed`));
+//   },
+//   credentials: true,
+//   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+//   allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+//   optionsSuccessStatus: 204
+// };
+
+
+const corsOptions: CorsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin) return callback(null, true);
+
+    const socketOrigins = env.SOCKET_CORS_ORIGIN.split(',').map(o => o.trim());
+
+    if (env.NODE_ENV === 'development' || socketOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked: ${origin}`));
+  },
+
+  credentials: true,
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+};
+
+app.use(cors(corsOptions));
+
+// Pre-flight for all routes
+app.options('*', cors(corsOptions));
+
+// Rate limiting — 100 requests per 15 minutes per IP
+app.use(rateLimiter);
+
+// Body parsing
+app.use(express.json({ 
+  limit: '10mb',
+  verify: (req: any, _res, buf) => {
+    if (req.originalUrl.startsWith('/api/donations/webhook')) {
+      req.rawBody = buf;
+    }
+  }
+}));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ── Health Check ────────────────────────────────────────────
+app.get('/api/health', async (_req, res) => {
+  const dbHealthy = await checkDatabaseHealth();
+  res.status(dbHealthy ? 200 : 503).json({
+    status: dbHealthy ? 'healthy' : 'unhealthy',
+    timestamp: new Date().toISOString(),
+    version: '2.1.0',
+    database: dbHealthy ? 'connected' : 'disconnected',
+  });
+});
+
+// ── API Routes ──────────────────────────────────────────────
+app.use('/api/auth', authRoutes);
+app.use('/api/tasks', tasksRoutes);
+app.use('/api/donations', donationsRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/campaigns', campaignsRoutes);
+app.use('/api/deliveries', deliveriesRoutes);
+app.use('/api/withdrawals', withdrawalsRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/users', usersRoutes);
+app.use('/api/ngo', ngoRoutes);
+app.use('/api/coordinator', coordinatorRoutes);
+app.use('/api/media', mediaRoutes);
+app.use('/api/inkind', inKindRoutes);
+app.use('/api/goods-campaigns', goodsCampaignsRoutes);
+app.use('/api/goods-donations', goodsDonationsRoutes);
+// app.use('/api/admin', goodsDonationsAdminRoutes);
+app.use('/api/admin/goods', goodsDonationsAdminRoutes);
+
+// ── 404 Handler ─────────────────────────────────────────────
+app.use((_req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
+// ── Global Error Handler ────────────────────────────────────
+app.use(errorHandler);
+
+// ── Socket.IO Setup ─────────────────────────────────────────
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: env.SOCKET_CORS_ORIGIN.split(',').map((o) => o.trim()),
+    methods: ['GET', 'POST'],
+  },
+});
+
+initializeChatGateway(io);
+
+// ── Graceful Shutdown ───────────────────────────────────────
+const gracefulShutdown = async (signal: string) => {
+  logger.info(`\n${signal} received. Shutting down gracefully...`);
+
+  httpServer.close(async () => {
+    logger.info('HTTP server closed');
+    await pool.end();
+    logger.info('Database pool closed');
+    process.exit(0);
+  });
+
+  // Force shutdown after 10 seconds
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+export { app, httpServer };

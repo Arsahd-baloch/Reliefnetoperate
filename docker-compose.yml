@@ -1,0 +1,86 @@
+services:
+  # ── PostgreSQL 16 + PostGIS 3 ──
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: disasteraid-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-disasteraid}
+      POSTGRES_USER: ${POSTGRES_USER:-disasteraid_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
+      - ./database/002_finance_system.sql:/docker-entrypoint-initdb.d/002_finance_system.sql
+      - ./database/003_chat_task_scope.sql:/docker-entrypoint-initdb.d/003_chat_task_scope.sql
+      - ./database/004_audit_system.sql:/docker-entrypoint-initdb.d/004_audit_system.sql
+      - ./database/005_comprehensive_seed.sql:/docker-entrypoint-initdb.d/005_comprehensive_seed.sql
+      - ./database/006_system_config.sql:/docker-entrypoint-initdb.d/006_system_config.sql
+      - ./database/007_beneficiary_feedback.sql:/docker-entrypoint-initdb.d/007_beneficiary_feedback.sql
+      - ./database/008_admin_stats_fix.sql:/docker-entrypoint-initdb.d/008_admin_stats_fix.sql
+      - ./database/009_inkind_donations.sql:/docker-entrypoint-initdb.d/009_inkind_donations.sql
+      - ./database/010_goods_campaigns.sql:/docker-entrypoint-initdb.d/010_goods_campaigns.sql
+      - ./database/011_schema_v2_fixes.sql:/docker-entrypoint-initdb.d/011_schema_v2_fixes.sql
+      - ./database/012_inkind_progressive.sql:/docker-entrypoint-initdb.d/012_inkind_progressive.sql
+      - ./database/013_add_deleted_at.sql:/docker-entrypoint-initdb.d/013_add_deleted_at.sql
+    healthcheck:
+      test: [ 'CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-disasteraid_user} -d ${POSTGRES_DB:-disasteraid}' ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Node.js Backend ──
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: disasteraid-api
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - '${PORT:-3000}:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src # Hot reload in dev (if using dev command)
+    # CMD from Dockerfile will be used: ["npm", "start"]
+
+    # ── Flutter Web (Optional) ──
+  flutter-web:
+    build:
+      context: ./flutter_app
+      dockerfile: Dockerfile.web
+    container_name: disasteraid-web
+    restart: unless-stopped
+    ports:
+      - '8080:80'
+    depends_on:
+      - backend
+    profiles:
+      - web
+
+  # ── Admin Panel ──
+  admin-panel:
+    build:
+      context: ./admin-panel
+      dockerfile: Dockerfile
+    container_name: disasteraid-admin
+    restart: unless-stopped
+    ports:
+      - '5173:5173'
+    depends_on:
+      - backend
+    # Environment variables for the built SPA can be tricky,
+    # often baked in at build time or handled via a config.json.
+    # For now, we assume standard Vite behavior.
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  default:
+    name: disasteraid-network

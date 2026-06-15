@@ -1,0 +1,128 @@
+import { pool } from '../../config/database.js';
+import { createError } from '../../middleware/errorHandler.js';
+export class CampaignsService {
+    /**
+     * Helper to get NGO profile ID for a user.
+     */
+    async getNgoIdByUserId(userId) {
+        const result = await pool.query('SELECT id FROM ngo_profiles WHERE user_id = $1', [userId]);
+        return result.rows[0]?.id || null;
+    }
+    async create(input, createdBy, ngoId) {
+        // const locationClause = input.latitude && input.longitude
+        //   ? `ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography`
+        //   : 'NULL';
+        const values = [
+            ngoId || null,
+            createdBy,
+            input.title,
+            input.description || null,
+            input.goal_pkr,
+        ];
+        if (input.latitude && input.longitude) {
+            values.push(input.longitude, input.latitude);
+        }
+        const result = await pool.query(`INSERT INTO campaigns (ngo_id, created_by, title, description, goal_pkr, location)
+       VALUES ($1, $2, $3, $4, $5, ${input.latitude && input.longitude ? `ST_SetSRID(ST_MakePoint($6, $7), 4326)::geography` : 'NULL'})
+       RETURNING *`, values);
+        return result.rows[0];
+    }
+    async getAll(status) {
+        const conditions = ['c.deleted_at IS NULL'];
+        const values = [];
+        if (status) {
+            conditions.push(`c.status = $${values.length + 1}`);
+            values.push(status);
+        }
+        const whereClause = `WHERE ${conditions.join(' AND ')}`;
+        const result = await pool.query(`SELECT c.id, c.ngo_id, c.created_by, c.title, c.description,
+              c.goal_pkr, c.raised_pkr, c.spent_pkr, c.status,
+              c.created_at, c.updated_at,
+              ST_X(c.location::geometry) AS longitude,
+              ST_Y(c.location::geometry) AS latitude,
+              np.org_name AS ngo_name,
+              u.name AS created_by_name
+       FROM campaigns c
+       LEFT JOIN ngo_profiles np ON np.id = c.ngo_id AND np.deleted_at IS NULL
+       LEFT JOIN users u ON u.id = c.created_by AND u.deleted_at IS NULL
+       ${whereClause}
+       ORDER BY c.created_at DESC`, values);
+        return result.rows;
+    }
+    async getById(id) {
+        const result = await pool.query(`SELECT c.id, c.ngo_id, c.created_by, c.title, c.description,
+              c.goal_pkr, c.raised_pkr, c.spent_pkr, c.status,
+              c.created_at, c.updated_at,
+              ST_X(c.location::geometry) AS longitude,
+              ST_Y(c.location::geometry) AS latitude,
+              np.org_name AS ngo_name,
+              np.bank_name, np.account_title, np.account_number,
+              u.name AS created_by_name
+       FROM campaigns c
+       LEFT JOIN ngo_profiles np ON np.id = c.ngo_id AND np.deleted_at IS NULL
+       LEFT JOIN users u ON u.id = c.created_by AND u.deleted_at IS NULL
+       WHERE c.id = $1 AND c.deleted_at IS NULL`, [id]);
+        if (result.rows.length === 0) {
+            throw createError('Campaign not found', 404);
+        }
+        return result.rows[0];
+    }
+    async update(id, input, requesterId, ip, role) {
+        const setClauses = [];
+        const values = [];
+        let paramIndex = 1;
+        const current = await pool.query('SELECT status, created_by FROM campaigns WHERE id = $1 AND deleted_at IS NULL', [id]);
+        if (current.rows.length === 0) {
+            throw createError('Campaign not found', 404);
+        }
+        const currentCampaign = current.rows[0];
+        const oldStatus = currentCampaign.status;
+        // Ownership check for non-admins
+        if (role !== 'ADMIN' && requesterId !== undefined) {
+            if (currentCampaign.created_by !== requesterId) {
+                throw createError('You do not have permission to update this campaign', 403);
+            }
+        }
+        // Status check: Closed campaigns are read-only
+        if (currentCampaign.status === 'CLOSED') {
+            throw createError('Cannot edit a closed campaign', 400);
+        }
+        if (input.title !== undefined) {
+            setClauses.push(`title = $${paramIndex++}`);
+            values.push(input.title);
+        }
+        if (input.description !== undefined) {
+            setClauses.push(`description = $${paramIndex++}`);
+            values.push(input.description);
+        }
+        if (input.goal_pkr !== undefined) {
+            setClauses.push(`goal_pkr = $${paramIndex++}`);
+            values.push(input.goal_pkr);
+        }
+        if (input.status !== undefined) {
+            setClauses.push(`status = $${paramIndex++}`);
+            values.push(input.status);
+        }
+        if (input.latitude !== undefined && input.longitude !== undefined) {
+            setClauses.push(`location = ST_SetSRID(ST_MakePoint($${paramIndex}, $${paramIndex + 1}), 4326)::geography`);
+            values.push(input.longitude, input.latitude);
+            paramIndex += 2;
+        }
+        if (setClauses.length === 0) {
+            throw createError('No fields to update', 400);
+        }
+        values.push(id);
+        const result = await pool.query(`UPDATE campaigns SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`, values);
+        if (result.rows.length === 0) {
+            throw createError('Campaign not found', 404);
+        }
+        // Audit Log if status changed by a requester
+        if (input.status !== undefined && requesterId !== undefined && oldStatus !== input.status) {
+            await pool.query(`INSERT INTO audit_logs (admin_id, action_type, target_entity, target_id, metadata, ip_address)
+         VALUES ($1, 'UPDATE_CAMPAIGN_STATUS', 'campaigns', $2, $3, $4)`, [requesterId, id, JSON.stringify({ old_status: oldStatus, new_status: input.status }), ip || null]);
+        }
+        return result.rows[0];
+    }
+}
+export const campaignsService = new CampaignsService();
+//# sourceMappingURL=campaigns.service.js.map

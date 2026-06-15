@@ -1,0 +1,20 @@
+services:
+  backend:
+    command: npm run dev
+    volumes:
+      - ./backend/src:/app/src
+    environment:
+      NODE_ENV: development
+
+  admin-panel:
+    build:
+      context: ./admin-panel
+      dockerfile: Dockerfile
+    container_name: disasteraid-admin
+    restart: unless-stopped
+    ports:
+      - '5173:5173'
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:3000/api

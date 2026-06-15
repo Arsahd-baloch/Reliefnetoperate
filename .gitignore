@@ -1,0 +1,4 @@
+flutter_app/build/
+flutter_app/.dart_tool/
+*.apk
+demo_video/clips/*.mp4

@@ -1,0 +1,273 @@
+﻿import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:reliefnet_app/core/theme/app_theme.dart';
+import 'package:reliefnet_app/features/auth/presentation/auth_provider.dart';
+import 'package:reliefnet_app/widgets/reliefnet_logo.dart';
+
+class LoginScreen extends ConsumerStatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends ConsumerState<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
+  bool _usePhone = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    await ref.read(authProvider.notifier).login(
+          email: _usePhone ? null : _emailController.text.trim(),
+          phone: _usePhone ? _emailController.text.trim() : null,
+          password: _passwordController.text,
+        );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = ref.watch(authProvider);
+    final size = MediaQuery.of(context).size;
+    final isLoading = authState.status == AuthStatus.loading;
+
+    ref.listen<AuthState>(authProvider, (prev, next) {
+      // Router's redirect handles navigation to role home on authenticated.
+      // Only show errors here.
+      if (next.error != null && prev?.error != next.error) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(next.error!),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    });
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: size.height - MediaQuery.of(context).padding.top),
+            child: IntrinsicHeight(
+              child: Column(
+                children: [
+                  // ── Brand Header ──
+                  _BrandHeader(),
+
+                  // ── Form Card ──
+                  Expanded(
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Welcome back',
+                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.textPrimary,
+                                  ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Sign in to continue helping communities',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: AppTheme.textSecondary,
+                                  ),
+                            ),
+                            const SizedBox(height: 28),
+
+                            // ── Credential Field ──
+                            TextFormField(
+                              controller: _emailController,
+                              keyboardType: _usePhone
+                                  ? TextInputType.phone
+                                  : TextInputType.emailAddress,
+                              textInputAction: TextInputAction.next,
+                              decoration: InputDecoration(
+                                labelText: _usePhone ? 'Phone Number' : 'Email Address',
+                                prefixIcon: Icon(
+                                  _usePhone ? Icons.phone_outlined : Icons.email_outlined,
+                                  size: 20,
+                                ),
+                                suffixIcon: TextButton(
+                                  onPressed: () => setState(() {
+                                    _usePhone = !_usePhone;
+                                    _emailController.clear();
+                                  }),
+                                  child: Text(
+                                    _usePhone ? 'Use Email' : 'Use Phone',
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              ),
+                              validator: (v) {
+                                if (v == null || v.isEmpty) {
+                                  return _usePhone ? 'Phone is required' : 'Email is required';
+                                }
+                                if (!_usePhone &&
+                                    !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(v)) {
+                                  return 'Enter a valid email';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+
+                            // ── Password Field ──
+                            TextFormField(
+                              controller: _passwordController,
+                              obscureText: _obscurePassword,
+                              textInputAction: TextInputAction.done,
+                              onFieldSubmitted: (_) => isLoading ? null : _handleLogin(),
+                              decoration: InputDecoration(
+                                labelText: 'Password',
+                                prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                                suffixIcon: IconButton(
+                                  tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+                                  icon: Icon(
+                                    _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                    size: 20,
+                                  ),
+                                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                                ),
+                              ),
+                              validator: (v) {
+                                if (v == null || v.isEmpty) return 'Password is required';
+                                if (v.length < 8) return 'Password must be at least 8 characters';
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 28),
+
+                            // ── Sign In Button ──
+                            SizedBox(
+                              width: double.infinity,
+                              height: 52,
+                              child: ElevatedButton(
+                                onPressed: isLoading ? null : _handleLogin,
+                                child: isLoading
+                                    ? Semantics(
+                                        label: 'Signing in, please wait',
+                                        child: const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.5,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      )
+                                    : const Text('Sign In'),
+                              ),
+                            ),
+
+                            const Spacer(),
+
+                            // ── Register Link ──
+                            Center(
+                              child: TextButton(
+                                onPressed: () => context.go('/register'),
+                                child: RichText(
+                                  text: const TextSpan(
+                                    text: "Don't have an account? ",
+                                    style: TextStyle(
+                                      color: AppTheme.textDisabled,
+                                      fontSize: 14,
+                                    ),
+                                    children: [
+                                      TextSpan(
+                                        text: 'Sign Up',
+                                        style: TextStyle(
+                                          color: AppTheme.primaryColor,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BrandHeader extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(24, 40, 24, 32),
+      child: Column(
+        children: [
+          ExcludeSemantics(
+            child: Container(
+              width: 72,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: const ReliefNetLogo(size: 48),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'ReliefNet',
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.w900,
+              color: AppTheme.primaryColor,
+              letterSpacing: -1.0,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Humanitarian Relief Platform',
+            style: TextStyle(
+              fontSize: 13,
+              color: AppTheme.textDisabled,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
