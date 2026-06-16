@@ -18,9 +18,8 @@ interface TaskRow {
   category: string | null;
   family_size: number;
   items_needed: Record<string, unknown>;
-  location: Record<string, unknown>;
-  latitude?: number;
-  longitude?: number;
+  latitude: number;
+  longitude: number;
   location_text: string | null;
   radius_km: number;
   budget_pkr: number;
@@ -44,11 +43,10 @@ export class TasksService {
       `INSERT INTO tasks (
         campaign_id, beneficiary_id, created_by, source_type,
         title, description, category, family_size, items_needed,
-        location, location_text, radius_km, budget_pkr, urgency
+        latitude, longitude, location_text, radius_km, budget_pkr, urgency
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb,
-        ST_SetSRID(ST_MakePoint($10, $11), 4326)::geography,
-        $12, $13, $14, $15
+        $10, $11, $12, $13, $14, $15
       ) RETURNING *`,
       [
         input.campaign_id || null,
@@ -60,8 +58,8 @@ export class TasksService {
         input.category || null,
         input.family_size,
         JSON.stringify(input.items_needed),
-        input.longitude,
         input.latitude,
+        input.longitude,
         input.location_text || null,
         input.radius_km,
         input.budget_pkr,
@@ -96,8 +94,8 @@ export class TasksService {
 
     const result = await pool.query<TaskRow>(
       `SELECT t.*,
-              ST_X(t.location::geometry) AS longitude,
-              ST_Y(t.location::geometry) AS latitude,
+              t.longitude,
+              t.latitude,
               u.name AS created_by_name
        FROM tasks t
        LEFT JOIN users u ON u.id = t.created_by
@@ -121,8 +119,8 @@ export class TasksService {
   async getTaskById(id: number): Promise<TaskRow> {
     const result = await pool.query<TaskRow>(
       `SELECT t.*,
-              ST_X(t.location::geometry) AS longitude,
-              ST_Y(t.location::geometry) AS latitude,
+              t.longitude,
+              t.latitude,
               creator.name AS created_by_name,
               claimer.name AS claimed_by_name,
               coord.name AS coordinator_name
@@ -147,8 +145,8 @@ export class TasksService {
   async getMyTasks(userId: number): Promise<TaskRow[]> {
     const result = await pool.query<TaskRow>(
       `SELECT t.*,
-              ST_X(t.location::geometry) AS longitude,
-              ST_Y(t.location::geometry) AS latitude,
+              t.longitude,
+              t.latitude,
               creator.name  AS created_by_name,
               claimer.name  AS claimed_by_name,
               coord.name    AS coordinator_name,
@@ -172,8 +170,8 @@ export class TasksService {
   async getCoordinatorTasks(userId: number): Promise<TaskRow[]> {
     const result = await pool.query<TaskRow>(
       `SELECT t.*,
-              ST_X(t.location::geometry) AS longitude,
-              ST_Y(t.location::geometry) AS latitude,
+              t.longitude,
+              t.latitude,
               creator.name AS created_by_name,
               claimer.name AS claimed_by_name,
               beneficiary.name AS beneficiary_name,
@@ -263,10 +261,8 @@ export class TasksService {
 
     // Handle location separately if lat/lng provided
     if (input.latitude !== undefined && input.longitude !== undefined) {
-      setClauses.push(
-        `location = ST_SetSRID(ST_MakePoint($${paramIndex}, $${paramIndex + 1}), 4326)::geography`
-      );
-      values.push(input.longitude, input.latitude);
+      setClauses.push(`latitude = $${paramIndex}, longitude = $${paramIndex + 1}`);
+      values.push(input.latitude, input.longitude);
       paramIndex += 2;
     }
     

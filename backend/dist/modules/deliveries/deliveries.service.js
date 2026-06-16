@@ -21,14 +21,14 @@ export class DeliveriesService {
                 throw createError(`Cannot submit delivery: task must be IN_PROGRESS or SUBMITTED (current: ${task.status})`, 400);
             }
             // Create delivery record
-            const deliveryResult = await client.query(`INSERT INTO deliveries (task_id, volunteer_id, storage_keys, gps_location, notes, quantity_delivered, status)
-         VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326)::geography, $6, $7, 'PENDING')
+            const deliveryResult = await client.query(`INSERT INTO deliveries (task_id, volunteer_id, storage_keys, gps_latitude, gps_longitude, notes, quantity_delivered, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING')
          RETURNING *`, [
                 input.task_id,
                 volunteerId,
                 input.storage_keys,
-                input.longitude,
                 input.latitude,
+                input.longitude,
                 input.notes || null,
                 input.quantity_delivered,
             ]);
@@ -63,7 +63,11 @@ export class DeliveriesService {
             await client.query('BEGIN');
             const deliveryResult = await client.query(`SELECT d.id, d.task_id, d.volunteer_id, d.storage_keys, d.notes, d.submitted_at,
                 t.claimed_by, t.budget_pkr, t.campaign_id, t.status AS task_status,
-                ST_Distance(d.gps_location, t.location) AS gps_distance_meters
+                2 * 6371000 * ASIN(SQRT(
+                  POWER(SIN(RADIANS(t.latitude  - d.gps_latitude)  / 2), 2) +
+                  COS(RADIANS(d.gps_latitude)) * COS(RADIANS(t.latitude)) *
+                  POWER(SIN(RADIANS(t.longitude - d.gps_longitude) / 2), 2)
+                )) AS gps_distance_meters
          FROM deliveries d
          JOIN tasks t ON t.id = d.task_id
          WHERE d.id = $1 FOR UPDATE`, [deliveryId]);
@@ -185,8 +189,8 @@ export class DeliveriesService {
     async getByTask(taskId) {
         const result = await pool.query(`SELECT d.id, d.task_id, d.volunteer_id, d.storage_keys, d.notes,
               d.verified_by, d.verified_at, d.submitted_at,
-              ST_Y(d.gps_location::geometry) AS latitude,
-              ST_X(d.gps_location::geometry) AS longitude,
+              d.gps_latitude  AS latitude,
+              d.gps_longitude AS longitude,
               u.name AS volunteer_name, v.name AS verifier_name,
               bf.confirmation_status, bf.rating AS beneficiary_rating,
               bf.comment AS beneficiary_comment, bf.created_at AS feedback_at

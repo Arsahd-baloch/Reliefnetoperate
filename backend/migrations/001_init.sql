@@ -1,10 +1,8 @@
 -- ============================================================
 -- DisasterAid V2.1 — Database Schema
--- PostgreSQL 16 + PostGIS 3
+-- PostgreSQL 16
 -- ============================================================
 BEGIN;
--- ── Extensions ──────────────────────────────────────────────
-CREATE EXTENSION IF NOT EXISTS postgis;
 -- ── ENUM Types ──────────────────────────────────────────────
 CREATE TYPE user_role AS ENUM (
     'DONOR',
@@ -90,7 +88,8 @@ CREATE TABLE ngo_profiles (
     registration_number VARCHAR(100) UNIQUE,
     status VARCHAR(20) DEFAULT 'PENDING',
     wallet_balance NUMERIC(12, 2) DEFAULT 0,
-    location GEOGRAPHY(Point, 4326),
+    latitude DECIMAL(9,6),
+    longitude DECIMAL(9,6),
     verified_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -102,7 +101,8 @@ CREATE TABLE volunteer_profiles (
     rating NUMERIC(3, 2) DEFAULT 5.0,
     completed_tasks INT DEFAULT 0,
     total_earned NUMERIC(12, 2) DEFAULT 0,
-    location GEOGRAPHY(Point, 4326),
+    latitude DECIMAL(9,6),
+    longitude DECIMAL(9,6),
     status VARCHAR(20) DEFAULT 'ACTIVE',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -117,7 +117,8 @@ CREATE TABLE campaigns (
         goal_pkr NUMERIC(12, 2) NOT NULL,
         raised_pkr NUMERIC(12, 2) DEFAULT 0,
         spent_pkr NUMERIC(12, 2) DEFAULT 0,
-        location GEOGRAPHY(Point, 4326),
+        latitude DECIMAL(9,6),
+        longitude DECIMAL(9,6),
         status campaign_status DEFAULT 'DRAFT',
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -136,7 +137,8 @@ CREATE TABLE tasks (
         category VARCHAR(50),
         family_size INT DEFAULT 1,
         items_needed JSONB DEFAULT '[]'::jsonb,
-        location GEOGRAPHY(Point, 4326) NOT NULL,
+        latitude DECIMAL(9,6) NOT NULL,
+        longitude DECIMAL(9,6) NOT NULL,
         location_text TEXT,
         radius_km INT DEFAULT 5,
         budget_pkr NUMERIC(10, 2) DEFAULT 0,
@@ -170,7 +172,8 @@ CREATE TABLE deliveries (
     task_id INT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     volunteer_id INT NOT NULL REFERENCES users(id),
     photo_urls TEXT [] NOT NULL,
-    gps_location GEOGRAPHY(Point, 4326) NOT NULL,
+    gps_latitude DECIMAL(9,6) NOT NULL,
+    gps_longitude DECIMAL(9,6) NOT NULL,
     notes TEXT,
     verified_by INT REFERENCES users(id),
     verified_at TIMESTAMPTZ,
@@ -216,7 +219,7 @@ CREATE TABLE ledger_entries (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 -- ── Indexes ─────────────────────────────────────────────────
-CREATE INDEX idx_tasks_location ON tasks USING GIST(location);
+CREATE INDEX idx_tasks_location ON tasks(latitude, longitude);
 CREATE INDEX idx_tasks_status ON tasks(status)
 WHERE status IN ('OPEN', 'ASSIGNED');
 CREATE INDEX idx_tasks_claimed ON tasks(claimed_by)

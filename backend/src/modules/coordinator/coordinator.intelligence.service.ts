@@ -81,12 +81,20 @@ export class CoordinatorIntelligenceService {
       // Rule 1: GPS Mismatch (> 100m)
       pool.query(
         `SELECT d.id as delivery_id, t.id as task_id, t.title, u.name as volunteer_name,
-                ST_Distance(d.gps_location, t.location) as distance_meters
+                2 * 6371000 * ASIN(SQRT(
+                  POWER(SIN(RADIANS(t.latitude  - d.gps_latitude)  / 2), 2) +
+                  COS(RADIANS(d.gps_latitude)) * COS(RADIANS(t.latitude)) *
+                  POWER(SIN(RADIANS(t.longitude - d.gps_longitude) / 2), 2)
+                )) as distance_meters
          FROM deliveries d
          JOIN tasks t ON t.id = d.task_id
          JOIN users u ON u.id = d.volunteer_id
          WHERE t.coordinator_id = $1 AND d.verified_at IS NULL
-         AND ST_Distance(d.gps_location, t.location) > 100`,
+         AND 2 * 6371000 * ASIN(SQRT(
+               POWER(SIN(RADIANS(t.latitude  - d.gps_latitude)  / 2), 2) +
+               COS(RADIANS(d.gps_latitude)) * COS(RADIANS(t.latitude)) *
+               POWER(SIN(RADIANS(t.longitude - d.gps_longitude) / 2), 2)
+             )) > 100`,
         [coordinatorId]
       ),
 

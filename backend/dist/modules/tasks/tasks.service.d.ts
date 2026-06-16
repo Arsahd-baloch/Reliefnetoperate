@@ -12,9 +12,8 @@ interface TaskRow {
     category: string | null;
     family_size: number;
     items_needed: Record<string, unknown>;
-    location: Record<string, unknown>;
-    latitude?: number;
-    longitude?: number;
+    latitude: number;
+    longitude: number;
     location_text: string | null;
     radius_km: number;
     budget_pkr: number;

@@ -94,20 +94,20 @@ INSERT INTO campaigns (id, ngo_id, created_by, title, goal_pkr, raised_pkr, stat
 ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, raised_pkr = EXCLUDED.raised_pkr;
 
 -- 5. TASKS (Crucial Test Area)
-INSERT INTO tasks (id, campaign_id, beneficiary_id, created_by, claimed_by, coordinator_id, source_type, title, status, urgency, location) VALUES
+INSERT INTO tasks (id, campaign_id, beneficiary_id, created_by, claimed_by, coordinator_id, source_type, title, status, urgency, latitude, longitude) VALUES
 -- Normal flow
-(1, 1, 400, 200, 300, 600, 'NGO_CAMPAIGN', 'Deliver 50kg Flour to Zia', 'SUBMITTED', 'HIGH', ST_SetSRID(ST_MakePoint(67.0011, 24.8607), 4326)::geography),
-(2, 2, 401, 201, 301, 600, 'NGO_CAMPAIGN', 'Urgent Insulin for Fatima', 'IN_PROGRESS', 'CRITICAL', ST_SetSRID(ST_MakePoint(67.0500, 24.9000), 4326)::geography),
-(3, 3, 402, 202, NULL, NULL, 'NGO_CAMPAIGN', 'Distribute Blankets at Camp', 'OPEN', 'MEDIUM', ST_SetSRID(ST_MakePoint(67.1000, 24.9500), 4326)::geography),
+(1, 1, 400, 200, 300, 600, 'NGO_CAMPAIGN', 'Deliver 50kg Flour to Zia', 'SUBMITTED', 'HIGH', 24.8607, 67.0011),
+(2, 2, 401, 201, 301, 600, 'NGO_CAMPAIGN', 'Urgent Insulin for Fatima', 'IN_PROGRESS', 'CRITICAL', 24.9000, 67.0500),
+(3, 3, 402, 202, NULL, NULL, 'NGO_CAMPAIGN', 'Distribute Blankets at Camp', 'OPEN', 'MEDIUM', 24.9500, 67.1000),
 
 -- Edge cases
-(4, 1, 403, 200, 302, 601, 'NGO_CAMPAIGN', 'Clean Water Delivery', 'CLAIMED', 'HIGH', ST_SetSRID(ST_MakePoint(67.0100, 24.8700), 4326)::geography), -- Claimed but not started
-(5, NULL, 404, 404, NULL, NULL, 'BENEFICIARY_REQUEST', 'Help! My roof collapsed', 'OPEN', 'CRITICAL', ST_SetSRID(ST_MakePoint(67.1500, 24.8000), 4326)::geography), -- Direct request
-(6, 1, 400, 200, 300, 600, 'NGO_CAMPAIGN', 'Verified Past Task', 'PAID', 'LOW', ST_SetSRID(ST_MakePoint(67.0000, 24.8600), 4326)::geography), -- Fully completed
+(4, 1, 403, 200, 302, 601, 'NGO_CAMPAIGN', 'Clean Water Delivery', 'CLAIMED', 'HIGH', 24.8700, 67.0100), -- Claimed but not started
+(5, NULL, 404, 404, NULL, NULL, 'BENEFICIARY_REQUEST', 'Help! My roof collapsed', 'OPEN', 'CRITICAL', 24.8000, 67.1500), -- Direct request
+(6, 1, 400, 200, 300, 600, 'NGO_CAMPAIGN', 'Verified Past Task', 'PAID', 'LOW', 24.8600, 67.0000), -- Fully completed
 
 -- Failure/Anomaly cases
-(7, 5, 402, 200, 304, 601, 'NGO_CAMPAIGN', 'Task with Suspended Volunteer', 'FLAGGED', 'MEDIUM', ST_SetSRID(ST_MakePoint(67.2000, 24.8200), 4326)::geography),
-(8, 1, 400, 200, 305, NULL, 'NGO_CAMPAIGN', 'Orphaned Workflow', 'IN_PROGRESS', 'MEDIUM', ST_SetSRID(ST_MakePoint(67.0011, 24.8607), 4326)::geography) -- No coordinator assigned
+(7, 5, 402, 200, 304, 601, 'NGO_CAMPAIGN', 'Task with Suspended Volunteer', 'FLAGGED', 'MEDIUM', 24.8200, 67.2000),
+(8, 1, 400, 200, 305, NULL, 'NGO_CAMPAIGN', 'Orphaned Workflow', 'IN_PROGRESS', 'MEDIUM', 24.8607, 67.0011) -- No coordinator assigned
 ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status;
 
 -- 6. DONATIONS (Financial Stress Test)

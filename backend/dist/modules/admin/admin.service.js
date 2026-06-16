@@ -18,17 +18,13 @@ export class AdminService {
     }
     async getMapData() {
         const tasksResult = await pool.query(`
-      SELECT id, title, status, urgency,
-             ST_X(location::geometry) AS longitude,
-             ST_Y(location::geometry) AS latitude
+      SELECT id, title, status, urgency, latitude, longitude
       FROM tasks
       WHERE status IN ('OPEN', 'CLAIMED', 'IN_PROGRESS')
         AND deleted_at IS NULL
     `);
         const volunteersResult = await pool.query(`
-      SELECT user_id, status,
-             ST_X(location::geometry) AS longitude,
-             ST_Y(location::geometry) AS latitude
+      SELECT user_id, status, latitude, longitude
       FROM volunteer_profiles
       WHERE status = 'ACTIVE'
     `);
