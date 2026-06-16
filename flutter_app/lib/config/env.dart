@@ -15,7 +15,7 @@
 class Env {
   static const String apiUrl = String.fromEnvironment(
     'API_URL',
-    defaultValue: 'https://finalreliefnet-production.up.railway.app/api',
+    defaultValue: 'https://reliefnetoperate-production.up.railway.app/api',
     // Local USB debugging: flutter run --dart-define=API_URL=http://localhost:3000/api
   );
   static const String cloudinaryCloudName = String.fromEnvironment(

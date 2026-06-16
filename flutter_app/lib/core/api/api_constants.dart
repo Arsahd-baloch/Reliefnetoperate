@@ -7,8 +7,9 @@ class ApiConstants {
   // static const String baseUrl = 'http://10.0.2.2:3000/api';       // Android emulator
   // static const String baseUrl = 'http://192.168.100.33:3000/api'; // LAN (no USB)
 
-  /// Physical device via USB — adb reverse tcp:3000 tcp:3000 tunnels this to host.
-  static const String baseUrl = 'http://localhost:3000/api';
+  /// Production Railway URL (used by Env.apiUrl default in env.dart).
+  /// For local dev: flutter run --dart-define=API_URL=http://localhost:3000/api
+  static const String baseUrl = 'https://reliefnetoperate-production.up.railway.app/api';
 
   // ── Auth ──
   static const String register = '/auth/register';
@@ -30,7 +31,8 @@ class ApiConstants {
   // ── Donations ──
   static const String donations = '/donations';
   static const String myDonations = '/donations/mine';
-  static String confirmDonation(int id) => '/donations/$id/confirm';
+  static String approveDonation(int id) => '/donations/$id/approve';
+  static String rejectDonation(int id) => '/donations/$id/reject';
   static String campaignDonations(int id) => '/donations/campaign/$id';
 
   // ── Deliveries ──
