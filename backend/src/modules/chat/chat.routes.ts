@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { chatController } from './chat.controller.js';
 import { authenticate } from '../../middleware/auth.js';
+import { validate } from '../../middleware/validate.js';
+import { sendMessageSchema, roomIdParam } from './chat.schema.js';
 
 const router = Router();
 
@@ -46,11 +48,12 @@ router.get(
 
 /**
  * POST /api/chat/rooms/:roomId/messages
- * Send a message.
+ * Send a message. Body: { text: string }
  */
 router.post(
   '/rooms/:roomId/messages',
   authenticate,
+  validate({ params: roomIdParam, body: sendMessageSchema }),
   (req, res, next) => chatController.sendMessage(req, res, next)
 );
 

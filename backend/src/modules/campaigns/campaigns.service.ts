@@ -12,27 +12,19 @@ export class CampaignsService {
   }
 
   async create(input: CreateCampaignInput, createdBy: number, ngoId?: number) {
-    // const locationClause = input.latitude && input.longitude
-    //   ? `ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography`
-    //   : 'NULL';
-
-    const values: unknown[] = [
-      ngoId || null,
-      createdBy,
-      input.title,
-      input.description || null,
-      input.goal_pkr,
-    ];
-
-    if (input.latitude && input.longitude) {
-      values.push(input.longitude, input.latitude);
-    }
-
     const result = await pool.query(
-      `INSERT INTO campaigns (ngo_id, created_by, title, description, goal_pkr, location)
-       VALUES ($1, $2, $3, $4, $5, ${input.latitude && input.longitude ? `ST_SetSRID(ST_MakePoint($6, $7), 4326)::geography` : 'NULL'})
+      `INSERT INTO campaigns (ngo_id, created_by, title, description, goal_pkr, latitude, longitude)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      values
+      [
+        ngoId || null,
+        createdBy,
+        input.title,
+        input.description || null,
+        input.goal_pkr,
+        input.latitude ?? null,
+        input.longitude ?? null,
+      ]
     );
 
     return result.rows[0];
@@ -50,9 +42,8 @@ export class CampaignsService {
     const result = await pool.query(
       `SELECT c.id, c.ngo_id, c.created_by, c.title, c.description,
               c.goal_pkr, c.raised_pkr, c.spent_pkr, c.status,
+              c.latitude, c.longitude,
               c.created_at, c.updated_at,
-              ST_X(c.location::geometry) AS longitude,
-              ST_Y(c.location::geometry) AS latitude,
               np.org_name AS ngo_name,
               u.name AS created_by_name
        FROM campaigns c
@@ -69,9 +60,8 @@ export class CampaignsService {
     const result = await pool.query(
       `SELECT c.id, c.ngo_id, c.created_by, c.title, c.description,
               c.goal_pkr, c.raised_pkr, c.spent_pkr, c.status,
+              c.latitude, c.longitude,
               c.created_at, c.updated_at,
-              ST_X(c.location::geometry) AS longitude,
-              ST_Y(c.location::geometry) AS latitude,
               np.org_name AS ngo_name,
               np.bank_name, np.account_title, np.account_number,
               u.name AS created_by_name
@@ -133,8 +123,8 @@ export class CampaignsService {
       values.push(input.status);
     }
     if (input.latitude !== undefined && input.longitude !== undefined) {
-      setClauses.push(`location = ST_SetSRID(ST_MakePoint($${paramIndex}, $${paramIndex + 1}), 4326)::geography`);
-      values.push(input.longitude, input.latitude);
+      setClauses.push(`latitude = $${paramIndex}, longitude = $${paramIndex + 1}`);
+      values.push(input.latitude, input.longitude);
       paramIndex += 2;
     }
 

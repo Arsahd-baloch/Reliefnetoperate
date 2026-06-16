@@ -59,43 +59,53 @@ export class AuthService {
     // Hash password with bcrypt 12 rounds (async)
     const passwordHash = await bcrypt.hash(input.password, env.BCRYPT_ROUNDS);
 
-    // Insert user
-    const result = await pool.query(
-      `INSERT INTO users (email, phone, password_hash, role_id, name, cnic, locale)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, email, phone, name, created_at`,
-      [
-        input.email || null,
-        input.phone || null,
-        passwordHash,
-        roleId,
-        input.name,
-        input.cnic || null,
-        input.locale,
-      ]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    const user = result.rows[0];
+      const result = await client.query(
+        `INSERT INTO users (email, phone, password_hash, role_id, name, cnic, locale)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, email, phone, name, created_at`,
+        [
+          input.email || null,
+          input.phone || null,
+          passwordHash,
+          roleId,
+          input.name,
+          input.cnic || null,
+          input.locale,
+        ]
+      );
 
-    // Create profile if volunteer or NGO
-    if (input.role === 'VOLUNTEER') {
-      await pool.query(
-        `INSERT INTO volunteer_profiles (user_id, volunteer_type) VALUES ($1, 'INDEPENDENT')`,
-        [user.id]
-      );
-    } else if (input.role === 'NGO') {
-      await pool.query(
-        'INSERT INTO ngo_profiles (user_id, org_name) VALUES ($1, $2)',
-        [user.id, input.name]
-      );
+      const user = result.rows[0];
+
+      if (input.role === 'VOLUNTEER') {
+        await client.query(
+          `INSERT INTO volunteer_profiles (user_id, volunteer_type) VALUES ($1, 'INDEPENDENT')`,
+          [user.id]
+        );
+      } else if (input.role === 'NGO') {
+        await client.query(
+          'INSERT INTO ngo_profiles (user_id, org_name) VALUES ($1, $2)',
+          [user.id, input.name]
+        );
+      }
+
+      await client.query('COMMIT');
+
+      const token = this.generateToken(user.id, input.role, roleId, user.name, 'ACTIVE');
+
+      return {
+        user: { ...user, role: input.role },
+        token,
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
-
-    const token = this.generateToken(user.id, input.role, roleId, user.name, 'ACTIVE');
-
-    return {
-      user: { ...user, role: input.role },
-      token,
-    };
   }
 
   /**
